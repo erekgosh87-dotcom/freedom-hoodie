@@ -8,7 +8,11 @@ export async function GET() {
     const sortedOrders = [...orders].sort((a, b) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     );
-    return NextResponse.json(sortedOrders);
+    return NextResponse.json(sortedOrders, {
+      headers: {
+        'Cache-Control': 'no-store, max-age=0',
+      }
+    });
   } catch (error) {
     return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 });
   }
