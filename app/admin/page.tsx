@@ -37,17 +37,31 @@ export default function AdminDashboard() {
   const ADMIN_PASSWORD = 'admin';
 
   useEffect(() => {
+    // Check for existing session
+    const savedSession = localStorage.getItem('admin_session');
+    if (savedSession === 'active') {
+      setIsLoggedIn(true);
+    }
+  }, []);
+
+  useEffect(() => {
     if (isLoggedIn) {
       fetchOrders();
+      // Periodically refresh orders every 30 seconds
+      const interval = setInterval(fetchOrders, 30000);
+      return () => clearInterval(interval);
     }
   }, [isLoggedIn]);
+
+  const [storageType, setStorageType] = useState<string>('Detecting...');
 
   const fetchOrders = async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/orders', { cache: 'no-store' });
       const data = await res.json();
-      setOrders(Array.isArray(data) ? data : []);
+      setOrders(Array.isArray(data.orders) ? data.orders : []);
+      setStorageType(data.storageType || 'Unknown');
     } catch (error) {
       console.error('Failed to fetch orders');
     } finally {
@@ -59,9 +73,15 @@ export default function AdminDashboard() {
     e.preventDefault();
     if (password === ADMIN_PASSWORD) {
       setIsLoggedIn(true);
+      localStorage.setItem('admin_session', 'active');
     } else {
       alert('Invalid password');
     }
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    localStorage.removeItem('admin_session');
   };
 
   const handleStatusUpdate = async (orderId: string, status: string) => {
@@ -164,7 +184,7 @@ export default function AdminDashboard() {
         </nav>
 
         <button 
-          onClick={() => setIsLoggedIn(false)}
+          onClick={handleLogout}
           className="flex items-center gap-3 px-4 py-3 text-red-500 hover:bg-red-50 rounded-xl font-medium transition-colors"
         >
           <LogOut size={20} /> Logout
@@ -176,14 +196,24 @@ export default function AdminDashboard() {
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Order Management</h1>
-            <p className="text-slate-500">Overview of your store&apos;s performance</p>
+            <p className="text-slate-500 text-sm">
+              Current Storage: <span className={`font-semibold ${storageType.includes('Stable') ? 'text-green-500' : 'text-orange-500'}`}>{storageType}</span>
+            </p>
           </div>
-          <button 
-            onClick={exportCSV}
-            className="flex items-center gap-2 px-6 py-2.5 bg-white border border-slate-200 rounded-full text-sm font-semibold hover:bg-slate-50 transition-colors shadow-sm"
-          >
-            <Download size={18} /> Export CSV
-          </button>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={fetchOrders}
+              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full text-sm font-semibold transition-colors flex items-center gap-2"
+            >
+              <TrendingUp size={16} /> Refresh
+            </button>
+            <button 
+              onClick={exportCSV}
+              className="flex items-center gap-2 px-6 py-2.5 bg-white border border-slate-200 rounded-full text-sm font-semibold hover:bg-slate-50 transition-colors shadow-sm"
+            >
+              <Download size={18} /> Export CSV
+            </button>
+          </div>
         </header>
 
         {/* Stats Grid */}
