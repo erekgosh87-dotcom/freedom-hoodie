@@ -14,26 +14,47 @@ export interface Order {
 
 const DB_PATH = path.join(process.cwd(), 'orders.json');
 
-// Initialize DB if not exists
-if (!fs.existsSync(DB_PATH)) {
-  fs.writeFileSync(DB_PATH, JSON.stringify([]));
+// Memory store fallback for environments where filesystem is read-only (like Vercel)
+let memoryOrders: Order[] = [];
+let isUsingMemory = false;
+
+function initDB() {
+  try {
+    if (!fs.existsSync(DB_PATH)) {
+      fs.writeFileSync(DB_PATH, JSON.stringify([]));
+    }
+  } catch (e) {
+    console.warn('Filesystem is read-only. Switching to memory store.');
+    isUsingMemory = true;
+  }
 }
 
+initDB();
+
 export function getOrders(): Order[] {
+  if (isUsingMemory) return memoryOrders;
+  
   try {
     const data = fs.readFileSync(DB_PATH, 'utf8');
     return JSON.parse(data);
   } catch (error) {
-    console.error('Error reading orders:', error);
-    return [];
+    console.warn('Error reading orders from file, using memory.');
+    return memoryOrders;
   }
 }
 
 export function saveOrders(orders: Order[]): void {
+  if (isUsingMemory) {
+    memoryOrders = orders;
+    return;
+  }
+
   try {
     fs.writeFileSync(DB_PATH, JSON.stringify(orders, null, 2));
   } catch (error) {
-    console.error('Error saving orders:', error);
+    console.warn('Error saving orders to file, switching to memory.');
+    isUsingMemory = true;
+    memoryOrders = orders;
   }
 }
 
@@ -63,3 +84,4 @@ export function deleteOrder(orderId: string): boolean {
   }
   return false;
 }
+
