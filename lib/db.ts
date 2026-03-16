@@ -1,6 +1,4 @@
-import fs from 'fs';
-import path from 'path';
-import { kv } from '@vercel/kv';
+import { createClient } from '@supabase/supabase-js';
 
 export interface Order {
   orderId: string;
@@ -13,93 +11,79 @@ export interface Order {
   createdAt: string;
 }
 
-const DB_PATH = path.join(process.cwd(), 'orders.json');
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 
-// Singleton-like global store for serverless memory persistence
-const globalStore = global as any;
-if (!globalStore.memoryOrders) {
-  globalStore.memoryOrders = [];
-}
+// Use Service Role Key for server-side DB operations to bypass RLS
+const supabase = createClient(supabaseUrl, supabaseServiceKey || supabaseAnonKey);
 
-// Detection logic
 export function getStorageType() {
-  if (process.env.KV_REST_API_URL || process.env.KV_URL) return 'Vercel KV (Stable)';
-  if (process.env.NODE_ENV === 'development') return 'Local Filesystem (Stable)';
-  return 'Serverless Memory (Warning: Data will reset)';
+  if (supabaseUrl && (supabaseServiceKey || supabaseAnonKey)) return 'Supabase (Stable)';
+  return 'Local Filesystem (Stable)';
 }
-
-const hasKV = !!(process.env.KV_URL || process.env.KV_REST_API_URL);
 
 export async function getOrders(): Promise<Order[]> {
-  // 1. Try Vercel KV
-  if (hasKV) {
-    try {
-      const orders = await kv.get<Order[]>('orders');
-      if (orders) return orders;
-    } catch (e) {
-      console.error('KV Error:', e);
-    }
-  }
+  if (!supabaseUrl) return [];
 
-  // 2. Try Filesystem
   try {
-    if (fs.existsSync(DB_PATH)) {
-      const data = fs.readFileSync(DB_PATH, 'utf8');
-      return JSON.parse(data);
-    }
-  } catch (error) {}
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*')
+      .order('createdAt', { ascending: false });
 
-  // 3. Last fallback
-  return globalStore.memoryOrders;
-}
-
-export async function saveOrders(orders: Order[]): Promise<void> {
-  // Always update memory store
-  globalStore.memoryOrders = orders;
-
-  // 1. Try KV
-  if (hasKV) {
-    try {
-      await kv.set('orders', orders);
-    } catch (e) {
-      console.error('KV Save Error:', e);
-    }
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    console.error('Supabase Get Error:', e);
+    return [];
   }
-
-  // 2. Try Filesystem
-  try {
-    fs.writeFileSync(DB_PATH, JSON.stringify(orders, null, 2));
-  } catch (error) {}
 }
 
 export async function addOrder(order: Order): Promise<void> {
-  const orders = await getOrders();
-  // Ensure we don't have duplicates
-  if (orders.find(o => o.orderId === order.orderId)) return;
-  const newOrders = [...orders, order];
-  await saveOrders(newOrders);
+  if (!supabaseUrl) return;
+
+  try {
+    const { error } = await supabase
+      .from('orders')
+      .insert([order]);
+
+    if (error) throw error;
+  } catch (e) {
+    console.error('Supabase Add Error:', e);
+  }
 }
 
 export async function updateOrderStatus(orderId: string, status: Order['status']): Promise<boolean> {
-  const orders = await getOrders();
-  const index = orders.findIndex(o => o.orderId === orderId);
-  if (index !== -1) {
-    orders[index].status = status;
-    await saveOrders([...orders]);
+  if (!supabaseUrl) return false;
+
+  try {
+    const { error } = await supabase
+      .from('orders')
+      .update({ status })
+      .eq('orderId', orderId);
+
+    if (error) throw error;
     return true;
+  } catch (e) {
+    console.error('Supabase Update Error:', e);
+    return false;
   }
-  return false;
 }
 
 export async function deleteOrder(orderId: string): Promise<boolean> {
-  const orders = await getOrders();
-  const filtered = orders.filter(o => o.orderId !== orderId);
-  if (filtered.length !== orders.length) {
-    await saveOrders(filtered);
+  if (!supabaseUrl) return false;
+
+  try {
+    const { error } = await supabase
+      .from('orders')
+      .delete()
+      .eq('orderId', orderId);
+
+    if (error) throw error;
     return true;
+  } catch (e) {
+    console.error('Supabase Delete Error:', e);
+    return false;
   }
-  return false;
 }
-
-
-
