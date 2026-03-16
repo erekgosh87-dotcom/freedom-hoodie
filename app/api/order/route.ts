@@ -23,7 +23,7 @@ export async function POST(request: Request) {
       createdAt: new Date().toISOString(),
     };
 
-    addOrder(newOrder);
+    await addOrder(newOrder);
 
     return NextResponse.json({ success: true, order: newOrder }, { status: 201 });
   } catch (error) {
@@ -41,7 +41,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'Missing orderId or status' }, { status: 400 });
     }
 
-    const success = updateOrderStatus(orderId, status);
+    const success = await updateOrderStatus(orderId, status);
     if (!success) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }
@@ -62,7 +62,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Missing orderId' }, { status: 400 });
     }
 
-    const success = deleteOrder(orderId);
+    const success = await deleteOrder(orderId);
     if (!success) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
     }

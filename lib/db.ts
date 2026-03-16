@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { kv } from '@vercel/kv';
 
 export interface Order {
   orderId: string;
@@ -14,74 +15,88 @@ export interface Order {
 
 const DB_PATH = path.join(process.cwd(), 'orders.json');
 
-// Memory store fallback for environments where filesystem is read-only (like Vercel)
-let memoryOrders: Order[] = [];
-let isUsingMemory = false;
+// Singleton-like global store for serverless memory persistence (limited)
+const globalStore = global as any;
+if (!globalStore.memoryOrders) {
+  globalStore.memoryOrders = [];
+}
 
-function initDB() {
-  try {
-    if (!fs.existsSync(DB_PATH)) {
-      fs.writeFileSync(DB_PATH, JSON.stringify([]));
+// Check if we are in a production environment with KV configured
+const isProduction = process.env.NODE_ENV === 'production';
+const hasKV = !!(process.env.KV_URL || process.env.KV_REST_API_URL);
+
+export async function getOrders(): Promise<Order[]> {
+  // 1. Try Vercel KV if available
+  if (hasKV) {
+    try {
+      const orders = await kv.get<Order[]>('orders');
+      return orders || [];
+    } catch (e) {
+      console.error('KV Error:', e);
     }
-  } catch (e) {
-    console.warn('Filesystem is read-only. Switching to memory store.');
-    isUsingMemory = true;
   }
-}
 
-initDB();
-
-export function getOrders(): Order[] {
-  if (isUsingMemory) return memoryOrders;
-  
+  // 2. Try Filesystem (Local development)
   try {
-    const data = fs.readFileSync(DB_PATH, 'utf8');
-    return JSON.parse(data);
+    if (fs.existsSync(DB_PATH)) {
+      const data = fs.readFileSync(DB_PATH, 'utf8');
+      return JSON.parse(data);
+    }
   } catch (error) {
-    console.warn('Error reading orders from file, using memory.');
-    return memoryOrders;
+    // If filesystem is read-only, we fall back to memory
   }
+
+  // 3. Fallback to global memory store
+  return globalStore.memoryOrders;
 }
 
-export function saveOrders(orders: Order[]): void {
-  if (isUsingMemory) {
-    memoryOrders = orders;
-    return;
+export async function saveOrders(orders: Order[]): Promise<void> {
+  // Update memory store first
+  globalStore.memoryOrders = orders;
+
+  // 1. Try Vercel KV if available
+  if (hasKV) {
+    try {
+      await kv.set('orders', orders);
+      return;
+    } catch (e) {
+      console.error('KV Save Error:', e);
+    }
   }
 
+  // 2. Try Filesystem (Local development)
   try {
     fs.writeFileSync(DB_PATH, JSON.stringify(orders, null, 2));
   } catch (error) {
-    console.warn('Error saving orders to file, switching to memory.');
-    isUsingMemory = true;
-    memoryOrders = orders;
+    // Filesystem error (expected on Vercel)
   }
 }
 
-export function addOrder(order: Order): void {
-  const orders = getOrders();
+export async function addOrder(order: Order): Promise<void> {
+  const orders = await getOrders();
   orders.push(order);
-  saveOrders(orders);
+  await saveOrders(orders);
 }
 
-export function updateOrderStatus(orderId: string, status: Order['status']): boolean {
-  const orders = getOrders();
+export async function updateOrderStatus(orderId: string, status: Order['status']): Promise<boolean> {
+  const orders = await getOrders();
   const index = orders.findIndex(o => o.orderId === orderId);
   if (index !== -1) {
     orders[index].status = status;
-    saveOrders(orders);
+    await saveOrders(orders);
     return true;
   }
   return false;
 }
 
-export function deleteOrder(orderId: string): boolean {
-  const orders = getOrders();
+export async function deleteOrder(orderId: string): Promise<boolean> {
+  const orders = await getOrders();
   const filtered = orders.filter(o => o.orderId !== orderId);
   if (filtered.length !== orders.length) {
-    saveOrders(filtered);
+    await saveOrders(filtered);
     return true;
   }
   return false;
 }
+
 

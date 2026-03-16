@@ -20,7 +20,8 @@ export default function ProductLanding() {
   const handleOrderSuccess = (orderId: string) => {
     setIsOrderFormOpen(false);
     setOrderSuccess(orderId);
-    setTimeout(() => setOrderSuccess(null), 5000);
+    // Increase display time to 10 seconds
+    setTimeout(() => setOrderSuccess(null), 10000);
   };
 
   return (
@@ -128,12 +129,14 @@ export default function ProductLanding() {
       />
 
       {orderSuccess && (
-        <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[60] animate-slide-up">
-          <div className="bg-neutral-900 text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border border-white/10">
-            <CheckCircle2 className="text-green-400" />
-            <div>
-              <p className="font-bold">Order Placed Successfully!</p>
-              <p className="text-sm text-neutral-400">ID: {orderSuccess}</p>
+        <div className="fixed top-10 left-1/2 -translate-x-1/2 z-[100] animate-slide-up w-full max-w-sm px-4">
+          <div className="glass-dark bg-neutral-900/90 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border border-white/20 backdrop-blur-2xl">
+            <div className="bg-green-500 p-2 rounded-full">
+              <CheckCircle2 size={20} className="text-white" />
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-sm">Order Placed Successfully!</p>
+              <p className="text-xs text-neutral-400">Order ID: {orderSuccess}</p>
             </div>
           </div>
         </div>

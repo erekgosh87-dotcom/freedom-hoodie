@@ -3,7 +3,7 @@ import { getOrders } from '@/lib/db';
 
 export async function GET() {
   try {
-    const orders = getOrders();
+    const orders = await getOrders();
     // Sort by newest first
     const sortedOrders = [...orders].sort((a, b) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
